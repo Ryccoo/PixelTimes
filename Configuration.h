@@ -37,5 +37,6 @@ int show_weather=false;
 
 #endif
 
+
 #define BRIGHTNESS_MAX 255
 #define BRIGHTNESS_MIN 0

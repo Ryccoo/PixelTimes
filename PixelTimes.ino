@@ -23,7 +23,7 @@
 
 
 #include "DrawingBuffer.h"
-
+#include "Display.h"
 
 
 Ticker display_ticker;
@@ -38,33 +38,10 @@ unsigned long button_press_time=0;
 File ff;
 File fsUploadFile;
 
-// Pins for LED MATRIX
-#ifdef ESP32
-
-#define P_LAT 22
-#define P_A 19
-#define P_B 23
-#define P_C 18
-#define P_D 5
-#define P_E 15
-#define P_OE 2
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 
-#endif
-PxMATRIX display(32,16, P_LAT, P_OE,P_A,P_B,P_C);
 
-// Some standard colors
-uint16_t myRED = display.color565(255, 0, 0);
-uint16_t myGREEN = display.color565(0, 255, 0);
-uint16_t myBLUE = display.color565(0, 0, 255);
-uint16_t myWHITE = display.color565(255, 255, 255);
-uint16_t myYELLOW = display.color565(255, 255, 0);
-uint16_t myCYAN = display.color565(0, 255, 255);
-uint16_t myMAGENTA = display.color565(255, 0, 255);
-uint16_t myBLACK = display.color565(0, 0, 0);
-
-uint16_t myCOLORS[8]={myRED,myGREEN,myBLUE,myWHITE,myYELLOW,myCYAN,myMAGENTA,myBLACK};
 
 // Array that keeps low/high temperatures and icons for two days
 int    temperature_show_low[2];
@@ -484,8 +461,6 @@ bool update_weather()
   return true;
 }
 
-DrawingBuffer buffer_drawer;
-
 // Handle NTP events
 //void processSyncEvent(NTPSyncEvent_t ntpEvent) {
 //  if (ntpEvent) {
@@ -763,13 +738,14 @@ void loop() {
 
   Serial.println("loop");
   // buffer_drawer.fillScreen(myBLACK);
-  memset(buffer_drawer.frame_buffer,0,frame_size);
+  // memset(buffer_drawer.frame_buffer,0,frame_size);
+  buffer_drawer.clearScreen();
   buffer_drawer.setCursor(1,6);
   buffer_drawer.setTextColor(myBLUE);
   String a;
   a += String(millis());
   buffer_drawer.print(a);
-  draw_animation();
+  render_frame();
   delay(100);
   return;
 

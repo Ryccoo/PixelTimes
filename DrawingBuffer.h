@@ -18,6 +18,14 @@ public:
   DrawingBuffer() : Adafruit_GFX(40,16) {}
   uint8_t bg_color[3];
 
+  void render() {
+  	
+  }
+
+  void clearScreen() {
+  	memset(frame_buffer,0,frame_size);
+  }
+
   // We need that one so we can call ".print"
   void drawPixel(int16_t x, int16_t y, uint16_t color)
   {
