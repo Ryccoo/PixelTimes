@@ -1,40 +1,37 @@
-#include <TimeLib.h>   // https://github.com/PaulStoffregen/Time
+#include "Configuration.h"
+#include "anim_data.h"
+
+#include <HTTPClient.h>
+
+#include <Time.h>
+#include <TimeLib.h>
+#include <WebServer.h>
+//#include <ESP8266WebServer.h>
+#include <WiFiManager.h>
+#include <DNSServer.h>
+//#include <TimeLib.h>   // https://github.com/PaulStoffregen/Time
 #include <Ticker.h>
 #include <EEPROM.h>
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <time.h>
-#include <WiFiManager.h>   // https://github.com/tzapu/WiFiManager
-
-#define ADAFRUIT_GFX_EXTRA 10
-
-#include <ESP8266HTTPClient.h>
-#include <NtpClientLib.h>   // https://github.com/2dom/NtpClient
+//#include <time.h>
+//#include <ESP8266HTTPClient.h>
+#include <NTPClient.h>
+//#include <NtpClientLib.h>   // https://github.com/2dom/NtpClient
 #include <PxMatrix.h>
 #include <Fonts/TomThumb.h>
 #include "FS.h"
-#include "anim_data.h"
+#include <SPIFFS.h>
 
-#define logging 1
-//#define SPIFFS_ENABLE
-#define RGB 565
 
-#if RGB==565
-  #define frame_size 1024
-#else
-  #define frame_size 1536
-#endif
+#include "DrawingBuffer.h"
 
-//-- CONFIG
-string ntp = "0.de.pool.ntp.org";
-const char HOSTNAME[] = "PixelTimes";
-//--
+
 
 Ticker display_ticker;
 
-int brightness=0;
-int dimm=0;
-int show_weather=false;
+int brightness=120;
+int dimm=+1;
+uint8_t display_draw_time=60;
+
 bool shouldSaveWifiConfig = true;
 unsigned long button_press_time=0;
 
@@ -42,11 +39,19 @@ File ff;
 File fsUploadFile;
 
 // Pins for LED MATRIX
-#define P_LAT 16
-#define P_A 5
-#define P_B 4
-#define P_C 15
+#ifdef ESP32
+
+#define P_LAT 22
+#define P_A 19
+#define P_B 23
+#define P_C 18
+#define P_D 5
+#define P_E 15
 #define P_OE 2
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+
+#endif
 PxMATRIX display(32,16, P_LAT, P_OE,P_A,P_B,P_C);
 
 // Some standard colors
@@ -59,7 +64,7 @@ uint16_t myCYAN = display.color565(0, 255, 255);
 uint16_t myMAGENTA = display.color565(255, 0, 255);
 uint16_t myBLACK = display.color565(0, 0, 0);
 
-uint16 myCOLORS[8]={myRED,myGREEN,myBLUE,myWHITE,myYELLOW,myCYAN,myMAGENTA,myBLACK};
+uint16_t myCOLORS[8]={myRED,myGREEN,myBLUE,myWHITE,myYELLOW,myCYAN,myMAGENTA,myBLACK};
 
 // Array that keeps low/high temperatures and icons for two days
 int    temperature_show_low[2];
@@ -91,47 +96,115 @@ uint8_t static weather_icons_b[]={0x00,0x00,0x00,0x00,0x00,0x20,0x00,0x00,0xff,0
   ,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x20,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x20,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 };
 
-union single_double{
-  uint8_t two[2];
-  uint16_t one;
-} this_single_double;
 
 unsigned long next_weather_update=0;
 bool weather_get_error;
 int sunset;
 
 boolean syncEventTriggered = false; // True if a time even has been triggered
-NTPSyncEvent_t ntpEvent; // Last triggered event
+//NTPSyncEvent_t ntpEvent; // Last triggered event
 
 
-// ISR for display refresh
-void display_updater()
-{
-  // This implements dimming
-  brightness=brightness+dimm;
-  if (brightness<0)
-  {
-    brightness=0;
-    dimm=0;
-  }
+//uint8_t display_draw_time=1-;
+//#ifdef ESP8266
+//// ISR for display refresh
+//void display_updater()
+//{
+////  display.display(display_draw_time);
+//  // This implements dimming
+//  brightness=brightness+dimm;
+//  if (brightness<0)
+//  {
+//    brightness=0;
+//    dimm=0;
+//  }
+//
+//  if (brightness>2100)
+//  {
+//    brightness=2100;
+//    dimm=0;
+//  }
+//   ESP.wdtFeed();
+//  display.display(brightness/30);
+//}
+//#endif
 
-  if (brightness>2100)
-  {
-    brightness=2100;
-    dimm=0;
-  }
-   ESP.wdtFeed();
-  display.display(brightness/30);
+#ifdef ESP32
+void IRAM_ATTR display_updater(){
+//  // Increment the counter and set the time of ISR
+  portENTER_CRITICAL_ISR(&timerMux);
+//  brightness=brightness+dimm;
+//  if (brightness<BRIGHTNESS_MIN)
+//  {
+//    brightness=0;
+//    dimm=+1;
+//  }
+//
+//  if (brightness>BRIGHTNESS_MAX)
+//  {
+//    brightness=BRIGHTNESS_MAX;
+//    dimm=-1;
+//  }
+  display.display(display_draw_time);
+  portEXIT_CRITICAL_ISR(&timerMux);
 }
+#endif
+
+
+void display_update_enable(bool is_enable)
+{
+
+#ifdef ESP8266
+  if (is_enable)
+    display_ticker.attach(0.004, display_updater);
+  else
+    display_ticker.detach();
+#endif
+
+#ifdef ESP32
+  Serial.println("Display update enable fun");
+  if (is_enable)
+  {
+    timer = timerBegin(0, 80, true);
+    timerAttachInterrupt(timer, &display_updater, true);
+    timerAlarmWrite(timer, 4000, true);
+    timerAlarmEnable(timer);
+  }
+  else
+  {
+    timerDetachInterrupt(timer);
+    timerAlarmDisable(timer);
+  }
+#endif
+}
+// ISR for display refresh
+//void display_updater()
+//{
+//  // This implements dimming
+//  brightness=brightness+dimm;
+//  if (brightness<0)
+//  {
+//    brightness=0;
+//    dimm=0;
+//  }
+//
+//  if (brightness>2100)
+//  {
+//    brightness=2100;
+//    dimm=0;
+//  }
+//   ESP.wdtFeed();
+//  display.display(brightness/30);
+//}
 
 // This gets all the weather data from openweathermap
 bool update_weather()
 {
   dimm=-1;
-  while (brightness>0)
+//  while (brightness>0)
   yield();
 
-  display_ticker.detach();
+  display_update_enable(false);
 
   String response;
 
@@ -167,7 +240,7 @@ bool update_weather()
   // Fetch forecast
   HTTPClient http2;
 
-  http2.begin("http://api.openweathermap.org/data/2.5/forecast?q=Erlangen,DE&APPID=xvxcvxvcc"); //HTTP
+  http2.begin("http://api.openweathermap.org/data/2.5/forecast?q=Kitchener,CA&APPID=2c615a3ac804e362d1de5cf62b74a949"); //HTTP
   int httpCode2 = http2.GET();
   WiFiClient * stream;
   int len;
@@ -185,8 +258,11 @@ bool update_weather()
        stream = http2.getStreamPtr();
 
     }
-    else
-      return false;
+    else {
+      weather_get_error=true;
+      display_update_enable(true);
+      return false;  
+    }
     //Serial.println(response);
     weather_get_error=false;
     #ifdef logging
@@ -212,7 +288,8 @@ bool update_weather()
       icon_show_high[1]=1;
     }
     http2.end();
-    display_ticker.attach(0.001, display_updater);
+    display_update_enable(true);
+//    display_ticker.attach(0.001, display_updater);
 
     dimm=1;
     return false;
@@ -400,78 +477,29 @@ bool update_weather()
   Serial.println("I-Low 0:" + String(icon_show_low[0])+ ", I-High:" + String(icon_show_high[0]));
   Serial.println("I-Low 1:" + String(icon_show_low[1])+ ", I-High:" + String(icon_show_high[1]));
   #endif
-  display_ticker.attach(0.001, display_updater);
+//  display_ticker.attach(0.001, display_updater);
+  display_update_enable(true);
 
   dimm=1;
   return true;
 }
 
-// Printing text with Adafruit GFX takes forever, so we create a frame buffer where
-// we construct the frame (off-line) and then write it to the display
-class buffer_draw : public Adafruit_GFX {
-public:
-  uint8_t frame_buffer[frame_size]={0};
-  buffer_draw() : Adafruit_GFX(40,16) {}
-  uint8_t bg_color[3];
-
-  // We need that one so we can call ".print"
-  void drawPixel(int16_t x, int16_t y, uint16_t color)
-  {
-    if ((x>31)| (y>15))
-      return;
-
-#if RGB==565
-    this_single_double.two[0]=frame_buffer[40];
-    this_single_double.two[1]=frame_buffer[41];
-    uint8_t r = ((((this_single_double.one >> 11) & 0x1F) * 527) + 23) >> 6;
-    uint8_t g = ((((this_single_double.one >> 5) & 0x3F) * 259) + 33) >> 6;
-    uint8_t b = (((color & 0x1F) * 527) + 23) >> 6;
-    // We only do black or white for the writing
-    if (((r+g+b)/3)<120)
-    {
-      frame_buffer[x*2+y*64]=255;
-      frame_buffer[x*2+y*64+1]=255;
-
-    }
-    else
-    {
-      frame_buffer[x*2+y*64]=0;
-      frame_buffer[x*2+y*64+1]=0;
-    }
-#else
-    // We only do black or white for the writing
-    if (((frame_buffer[60]+frame_buffer[61]+frame_buffer[62])/3)<120)
-    {
-      frame_buffer[x*3+y*96]=255;
-      frame_buffer[x*3+y*96+1]=255;
-      frame_buffer[x*3+y*96+2]=255;
-    }
-    else
-    {
-      frame_buffer[x*3+y*96]=0;
-      frame_buffer[x*3+y*96+1]=0;
-      frame_buffer[x*3+y*96+2]=0;
-    }
-#endif
-  }
-};
-
-buffer_draw buffer_drawer;
+DrawingBuffer buffer_drawer;
 
 // Handle NTP events
-void processSyncEvent(NTPSyncEvent_t ntpEvent) {
-  if (ntpEvent) {
-    Serial.print("Time Sync error: ");
-    if (ntpEvent == noResponse)
-    Serial.println("NTP server not reachable");
-    else if (ntpEvent == invalidAddress)
-    Serial.println("Invalid NTP server address");
-  }
-  else {
-    Serial.print("Got NTP time: ");
-    Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
-  }
-}
+//void processSyncEvent(NTPSyncEvent_t ntpEvent) {
+//  if (ntpEvent) {
+//    Serial.print("Time Sync error: ");
+//    if (ntpEvent == noResponse)
+//    Serial.println("NTP server not reachable");
+//    else if (ntpEvent == invalidAddress)
+//    Serial.println("Invalid NTP server address");
+//  }
+//  else {
+//    Serial.print("Got NTP time: ");
+//    Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
+//  }
+//}
 
 void button_pressed()
 {
@@ -479,156 +507,193 @@ void button_pressed()
   return;
   show_weather=!show_weather;
   button_press_time=millis();
+  Serial.println("Button");
 
 }
 String filenames[100];
 int no_files=0;
 
-void saveConfigCallback () {
-  Serial.println("Should save config");
-  shouldSaveWifiConfig = true;
-}
-void configModeCallback (WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  Serial.println(WiFi.softAPIP());
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-}
-void ntpSet () {
-  NTP.onNTPSyncEvent([](NTPSyncEvent_t event) {
-    ntpEvent = event;
-    syncEventTriggered = true;
-  });
-  NTP.begin(ntp.c_str(), 1, true);
-  NTP.setInterval(63);
+//void saveConfigCallback () {
+//  Serial.println("Should save config");
+//  shouldSaveWifiConfig = true;
+//}
+//void configModeCallback (WiFiManager *myWiFiManager) {
+//  Serial.println("Entered config mode");
+//  Serial.println(WiFi.softAPIP());
+//  Serial.println(myWiFiManager->getConfigPortalSSID());
+//}
+//void ntpSet () {
+//  NTP.onNTPSyncEvent([](NTPSyncEvent_t event) {
+//    ntpEvent = event;
+//    syncEventTriggered = true;
+//  });
+//  NTP.begin(ntp.c_str(), 1, true);
+//  NTP.setInterval(63);
+//}
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "0.ca.pool.ntp.org", -3600 * 5, 60000);
+void NTPSetup() {
+  timeClient.begin();
+  timeClient.update();
+  Serial.println(timeClient.getFormattedTime());
+  setTime(timeClient.getEpochTime());
 }
 
 void setup() {
   Serial.begin(115200);
-  wifi_station_set_hostname(const_cast<char*>(HOSTNAME));
-  WiFiManager wifiManager;
-  wifiManager.setSaveConfigCallback(saveConfigCallback);
-  wifiManager.setAPCallback(configModeCallback);
-  wifiManager.setMinimumSignalQuality();
-  wifiManager.setTimeout(300);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);
-  Serial.println ("start wifi connection");
-//  wifiManager.resetSettings(); // for testing / debugging
-  if (!wifiManager.autoConnect(HOSTNAME)) {
-    Serial.println("failed to connect and hit timeout");
-    delay(3000);
-    ESP.restart();
-    delay(5000);
-  }
-  Serial.println ("wifi connected ok");
-  Serial.println(WiFi.localIP());
-  ntpSet();
+  yield();
+  delay(5000);
+  Serial.println("Setup");
+////  wifi_station_set_hostname(const_cast<char*>(HOSTNAME));
+//  WiFiManager wifiManager;
+////  wifiManager.resetSettings(); 
+////  wifiManager.setSaveConfigCallback(saveConfigCallback);
+////  wifiManager.setAPCallback(configModeCallback);
+//  wifiManager.setMinimumSignalQuality();
+//  wifiManager.setTimeout(300);
+////  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+//  Serial.println ("start wifi connection");
+////  wifiManager.resetSettings(); // for testing / debugging
+//  if (!wifiManager.autoConnect("PixelTime", "foobar123")) {
+//    Serial.println("failed to connect and hit timeout");
+//    delay(3000);
+//    ESP.restart();
+//    delay(5000);
+//  }
+//  Serial.println ("wifi connected ok");
+//  Serial.println(WiFi.localIP());
+//
+//  NTPSetup();
+
+  Serial.print("\n");
+  Serial.print(hour());
+  Serial.print(":");
+  Serial.print(minute());
+  Serial.print(":");
+  Serial.print(second());
+  Serial.print("\n"); 
+  
 
 #ifdef SPIFFS_ENABLE
-  SPIFFS.begin();
-  Dir dir = SPIFFS.openDir("/");
-  while (dir.next()) {
-
-    Serial.println(dir.fileName());
-    filenames[no_files]=dir.fileName();
-    no_files++;
+  SPIFFS.begin(true);
+//  fs::Dir dir = SPIFFS.openDir("/");
+//  while (dir.next()) {
+//
+//    Serial.println(dir.fileName());
+//    filenames[no_files]=dir.fileName();
+//    no_files++;
+//  }
+  File root = SPIFFS.open("/");
+ 
+  File file = root.openNextFile();
+ 
+  while(file){
+      Serial.print("FILE: ");
+      Serial.println(file.name());
+      file = root.openNextFile();
   }
+
 #else
   no_files=sizeof(animation_lengths);
 #endif
 
-  display.begin(4);
+  Serial.println("Displaying");
+  display.begin(8);
+  display.setFont(&TomThumb);
   display.clearDisplay();
   display.setTextColor(myCYAN);
-  display.setCursor(2,0);
-  display.print("Pixel");
-  display.setTextColor(myMAGENTA);
-  display.setCursor(2,8);
-  display.print("Time");
+  display.setCursor(2,6);
+  display.print("HELLO");
+  display.setTextColor(myBLUE);
+  display.setCursor(2,12);
+  display.print(" -10");
+  display.setCursor(2,12);
   display.setTextColor(myWHITE);
   buffer_drawer.setFont(&TomThumb);
 
-  display_ticker.attach(0.001, display_updater);
-  attachInterrupt(digitalPinToInterrupt(0),button_pressed,FALLING);
-  dimm=1;
+//  display_ticker.attach(0.001, display_updater);
+  display_update_enable(true);
+//  attachInterrupt(digitalPinToInterrupt(0),button_pressed,FALLING);
+//  dimm=1;
   yield();
   delay(3000);
+  Serial.println("End of setup");
 }
 
+// // This draws the weather icons and temperature
+// void draw_weather_icon (uint8_t icon, uint8_t location, int temp,bool ab)
+// {
+//   display.setFont(&TomThumb);
 
-// This draws the weather icons and temperature
-void draw_weather_icon (uint8_t icon, uint8_t location, int temp,bool ab)
-{
-  display.setFont(&TomThumb);
+//   if (location>2)
+//   location=2;
 
-  if (location>2)
-  location=2;
+//   if (icon>10)
+//   icon=10;
+//   for (int yy=0; yy<10;yy++)
+//   {
+//     for (int xx=0; xx<10;xx++)
+//     {
+//       uint16_t byte_pos=(xx+icon*10)*2+yy*220;
+//       if (ab){
+//         this_single_double.two[1]=weather_icons_a[byte_pos];
+//         this_single_double.two[0]=weather_icons_a[byte_pos+1];
+//       }
+//       else
+//       {
+//         this_single_double.two[1]=weather_icons_b[byte_pos];
+//         this_single_double.two[0]=weather_icons_b[byte_pos+1];
+//       }
+//       display.drawPixel(1+xx+location*12,yy,this_single_double.one);
+//     }
 
-  if (icon>10)
-  icon=10;
-  for (int yy=0; yy<10;yy++)
-  {
-    for (int xx=0; xx<10;xx++)
-    {
-      uint16_t byte_pos=(xx+icon*10)*2+yy*220;
-      if (ab){
-        this_single_double.two[1]=weather_icons_a[byte_pos];
-        this_single_double.two[0]=weather_icons_a[byte_pos+1];
-      }
-      else
-      {
-        this_single_double.two[1]=weather_icons_b[byte_pos];
-        this_single_double.two[0]=weather_icons_b[byte_pos+1];
-      }
-      display.drawPixel(1+xx+location*12,yy,this_single_double.one);
-    }
+//   }
 
-  }
+//   int pixel_shift=0;
+//   if ((temp>-10)&&(temp<10))
+//   pixel_shift=2;
 
-  int pixel_shift=0;
-  if ((temp>-10)&&(temp<10))
-  pixel_shift=2;
+//   if (location==0)
+//   display.setCursor(2+pixel_shift,16);
+//   else
+//   display.setCursor(14+pixel_shift,16);
 
-  if (location==0)
-  display.setCursor(2+pixel_shift,16);
-  else
-  display.setCursor(14+pixel_shift,16);
+//   if (temp<0)
+//   {
+//     temp=temp*-1;
+//     if (location==0)
+//     display.drawPixel(pixel_shift,13,myWHITE);
+//     else
+//     display.drawPixel(12+pixel_shift,13,myWHITE);
+//   }
+//   display.println(temp);
+// }
 
-  if (temp<0)
-  {
-    temp=temp*-1;
-    if (location==0)
-    display.drawPixel(pixel_shift,13,myWHITE);
-    else
-    display.drawPixel(12+pixel_shift,13,myWHITE);
-  }
-  display.println(temp);
-}
+// // This draws the time for the weather view
+// void draw_time_weather ()
+// {
+//   uint8_t this_hour= hour();
+//   uint8_t this_minute= minute();
+//   uint8_t this_second= second();
+//   display.setFont(&TomThumb);
+//   display.setTextColor(myWHITE);
+//   display.setCursor(25,6);
+//   if (this_hour<10)
+//   display.println("0"+String(this_hour));
+//   else
+//   display.println(this_hour);
+//   display.setCursor(25,16);
 
-// This draws the time for the weather view
-void draw_time_weather ()
-{
-  uint8_t this_hour= NTP.getHour();
-  uint8_t this_minute= NTP.getMinute();
-  uint8_t this_second= NTP.getSecond();
-  display.setFont(&TomThumb);
-  display.setTextColor(myWHITE);
-  display.setCursor(25,6);
-  if (this_hour<10)
-  display.println("0"+String(this_hour));
-  else
-  display.println(this_hour);
-  display.setCursor(25,16);
+//   if (this_minute<10)
+//   display.println("0"+String(this_minute));
+//   else
+//   display.println(this_minute);
 
-  if (this_minute<10)
-  display.println("0"+String(this_minute));
-  else
-  display.println(this_minute);
+//   // Dots
+//   display.drawPixel(27,8,myWHITE);
+//   display.drawPixel(29,8,myWHITE);
 
-  // Dots
-  display.drawPixel(27,8,myWHITE);
-  display.drawPixel(29,8,myWHITE);
-
-}
+// }
 
 // This draws the pixel animation to the frame buffer in animation view
 void draw_animation ()
@@ -651,10 +716,10 @@ void draw_animation ()
 }
 
 // This draws the time to the frame buffer in animation view
-void draw_time ()
+void draw_time()
 {
-  uint8_t this_hour= NTP.getHour();
-  uint8_t this_minute= NTP.getMinute();
+  uint8_t this_hour= hour();
+  uint8_t this_minute= minute();
 
   String time_string;
 
@@ -672,75 +737,119 @@ void draw_time ()
 
 }
 
-void process_ntp()
-{
-  static int i = 0;
-  static int last = 0;
+void loop1() {
+//  display.clearDisplay();
+  // display.fillScreen(myBLACK);
 
-  if (syncEventTriggered) {
-    processSyncEvent(ntpEvent);
-    syncEventTriggered = false;
-  }
+
+  // display.setTextColor(myCYAN);
+  // display.setCursor(6, 5);
+  // display.print("HELLO");
+
+  // if(Serial.available() > 0) {
+  //   String c = Serial.readString();
+  //   display.print(c);
+  // }
+  // Serial.println("loop");
+  // buffer_drawer.fillScreen(myBLACK);
+  // buffer_drawer.setCursor(1,6);
+  // buffer_drawer.println(millis());
+  // draw_animation();
+  // yield();
+  delay(100);
 }
 
 void loop() {
+
+  Serial.println("loop");
+  // buffer_drawer.fillScreen(myBLACK);
+  memset(buffer_drawer.frame_buffer,0,frame_size);
+  buffer_drawer.setCursor(1,6);
+  buffer_drawer.setTextColor(myBLUE);
+  String a;
+  a += String(millis());
+  buffer_drawer.print(a);
+  draw_animation();
+  delay(100);
+  return;
+
   if (show_weather)
   {
 
     bool ret_code;
     unsigned long this_time=millis();
     yield();
+
+//    brightness=brightness+dimm;
+//    if (brightness<BRIGHTNESS_MIN)
+//    {
+//      brightness=BRIGHTNESS_MIN;
+//      dimm=+1;
+//    }
+//  
+//    if (brightness>BRIGHTNESS_MAX)
+//    {
+//      brightness=BRIGHTNESS_MAX;
+//      dimm=-1;
+//    }
+//    display.setBrightness(brightness);
+
+    
     // Update weather data every 10 minutes
-    if (this_time>next_weather_update)
-    {
-      ret_code=update_weather();
-      if (ret_code)
-      next_weather_update=this_time+600000;
-      else
-      next_weather_update=this_time+5000;
-    }
+//    if (this_time>next_weather_update)
+//    {
+//      ret_code=update_weather();
+//      if (ret_code)
+//      next_weather_update=this_time+600000;
+//      else
+//      next_weather_update=this_time+5000;
+//    }
 
-    display.clearDisplay();
-    draw_time_weather ();
+    // display.clearDisplay();
+    // draw_time_weather ();
 
-    // Exchange sun for moon icon when past sunset
-    if ((sunset<now()) && (icon_show_low[0]<2))
-    icon_show_low[0]=icon_show_low[0]+9;
-    if ((sunset<now()) && (icon_show_high[0]<2))
-    icon_show_high[0]=icon_show_high[0]+9;
+//    // Exchange sun for moon icon when past sunset
+//    if ((sunset<now()) && (icon_show_low[0]<2))
+//    icon_show_low[0]=icon_show_low[0]+9;
+//    if ((sunset<now()) && (icon_show_high[0]<2))
+//    icon_show_high[0]=icon_show_high[0]+9;
+//
+//    // Flip between icons every 2 seconds to animate them a bit
+//    // Flip between high and lows every 5 seconds
+//    if ((second()%20)<10)
+//    {
+//      // Dot to indicate high or low
+//      display.drawPixel(0,15,myWHITE);
+//      draw_weather_icon(icon_show_low[0],0,temperature_show_low[0],(second()%4>=2));
+//      draw_weather_icon(icon_show_low[0],0,temperature_show_low[0],(second()%4<2));
+//      draw_weather_icon(icon_show_low[1],1,temperature_show_low[1],(second()%4>=2));
+//      draw_weather_icon(icon_show_low[1],1,temperature_show_low[1],(second()%4<2));
+//    }
+//    else
+//    {
+//      draw_weather_icon(icon_show_high[0],0,temperature_show_high[0],(second()%4>=2));
+//      draw_weather_icon(icon_show_high[0],0,temperature_show_high[0],(second()%4<2));
+//      draw_weather_icon(icon_show_high[1],1,temperature_show_high[1],(second()%4>=2));
+//      draw_weather_icon(icon_show_high[1],1,temperature_show_high[1],(second()%4<2));
+//      // Dot to indicate high or low
+//      display.drawPixel(0,11,myWHITE);
+//    }
+//
+//    // If we had problems fetching the weather we display a red dot
+//    if (weather_get_error)
+//    display.drawPixel(0,0,myRED);
 
-    // Flip between icons every 2 seconds to animate them a bit
-    // Flip between high and lows every 5 seconds
-    if ((NTP.getSecond()%20)<10)
-    {
-      // Dot to indicate high or low
-      display.drawPixel(0,15,myWHITE);
-      draw_weather_icon(icon_show_low[0],0,temperature_show_low[0],(NTP.getSecond()%4>=2));
-      draw_weather_icon(icon_show_low[0],0,temperature_show_low[0],(NTP.getSecond()%4<2));
-      draw_weather_icon(icon_show_low[1],1,temperature_show_low[1],(NTP.getSecond()%4>=2));
-      draw_weather_icon(icon_show_low[1],1,temperature_show_low[1],(NTP.getSecond()%4<2));
-    }
-    else
-    {
-      draw_weather_icon(icon_show_high[0],0,temperature_show_high[0],(NTP.getSecond()%4>=2));
-      draw_weather_icon(icon_show_high[0],0,temperature_show_high[0],(NTP.getSecond()%4<2));
-      draw_weather_icon(icon_show_high[1],1,temperature_show_high[1],(NTP.getSecond()%4>=2));
-      draw_weather_icon(icon_show_high[1],1,temperature_show_high[1],(NTP.getSecond()%4<2));
-      // Dot to indicate high or low
-      display.drawPixel(0,11,myWHITE);
-    }
-
-    // If we had problems fetching the weather we display a red dot
-    if (weather_get_error)
-    display.drawPixel(0,0,myRED);
-
-    process_ntp();
+// TODO
+//    process_ntp();
 
     if (!show_weather)
-    return;
+      return;
+    
+    yield();
     delay(100);
-
-
+    
+//
+//
   }
   else
   {
@@ -773,7 +882,7 @@ void loop() {
     while(1)
     {
 
-      if ((millis()-last_animation_change)>300000)
+      if ((millis()-last_animation_change)>10000)
       break;
       int frame=0;
 
@@ -804,16 +913,17 @@ void loop() {
 #else
         memcpy_P(buffer_drawer.frame_buffer,animations+(frame_offset+frame)*frame_size,frame_size);
 #endif
-            unsigned long read_latency=micros()-start_read;
-            //if (read_latency>500)
-              //Serial.println("Read latency problem, latency: " + String(read_latency));
+        unsigned long read_latency=micros()-start_read;
+        //if (read_latency>500)
+           //Serial.println("Read latency problem, latency: " + String(read_latency));
 
         // Write time to frame buffer
         draw_time ();
         frame++;
 
         yield();
-        process_ntp();
+        // TODO
+//        process_ntp();
 
         if (frame==no_of_frames)
         {
