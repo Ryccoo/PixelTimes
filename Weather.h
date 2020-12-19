@@ -2,7 +2,7 @@
 #define Weather_H
 
 #include "Configuration.h"
-
+#include "Display.h"
 
 // Array that keeps low/high temperatures and icons for two days
 int    temperature_show_low[2];
@@ -13,18 +13,23 @@ int    icon_show_high[2];
 unsigned long next_weather_update=0;
 bool weather_get_error;
 int sunset;
+int sunrise;
+
+int last_minute = -1;
+bool weather_next_icon_cycle = 0;
+bool weather_render_frame = false;
 
 // Icons
 /**
 0   Sunny
-1   Semi Cloudy
-2   Cloudy
-3   Cloudy?
-4   Raining
-5   Heavier Rain
+1   Few clouds
+2   scattered clouds
+3   broken clouds
+4   shower rain
+5   rain
 6   Storm/Thunderstorm
 7   Snowing
-8   Fog?
+8   Mist
 9   Sunny - Night
 10  Cloudy - Night
 **/
@@ -54,291 +59,406 @@ uint8_t static weather_icons_b[]={0x00,0x00,0x00,0x00,0x00,0x20,0x00,0x00,0xff,0
 };
 
 
-// bool update_weather()
-// {
-//   dimm=-1;
-// //  while (brightness>0)
-//   yield();
+bool update_weather()
+{
+  Serial.println("Updating weather");
 
-//   display_update_enable(false);
+  dimm=-1;
+  while (brightness>0)
+  {
+    yield();
+  }
 
-//   String response;
+  display_update_enable(false);
 
-//   // Fetch current day - only sunset time information used for now
-//   HTTPClient http;
+  String response;
 
-//   http.begin("http://api.openweathermap.org/data/2.5/weather?q=Herzogenaurach,DE&APPID=vxcvcvcxxcvcxvcx"); //HTTP
-//   int httpCode = http.GET();
-//   if(httpCode > 0) {
-//     // HTTP header has been send and Server response header has been handled
-//     Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+  // Fetch current day - only sunset time information used for now
+  HTTPClient http;
 
-//     if(httpCode == HTTP_CODE_OK) {
-//       response=http.getString();
-//       int this_index = response.indexOf("sunset");
-//       this_index = response.indexOf(":",this_index);
-//       int next_index = response.indexOf(",",this_index);
-//       sunset=response.substring(this_index+1,next_index).toInt();
+  http.begin(weather_api_url); //HTTP
+  int httpCode = http.GET();
+  if(httpCode > 0) {
+    // HTTP header has been send and Server response header has been handled
+    Serial.printf("[HTTP] GET... code: %d\n", httpCode);
 
-//       //Serial.println(response);
-//       time_t time_now = now();
-//       #ifdef logging
-//       Serial.println("Got Sunrise at " + String (sunset) + " Now:" + String (time_now));
-//       #endif
-//     }
-//   } else {
-//     weather_get_error=true;
-//     Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+    if(httpCode == HTTP_CODE_OK) {
+      response=http.getString();
+      int this_index = response.indexOf("sunset");
+      this_index = response.indexOf(":",this_index);
+      int next_index = response.indexOf(",",this_index);
+      sunset=response.substring(this_index+1,next_index).toInt();
 
-//   }
-//   http.end();
-
-//   // Fetch forecast
-//   HTTPClient http2;
-
-//   http2.begin("http://api.openweathermap.org/data/2.5/forecast?q=Kitchener,CA&APPID=2c615a3ac804e362d1de5cf62b74a949"); //HTTP
-//   int httpCode2 = http2.GET();
-//   WiFiClient * stream;
-//   int len;
-//   // httpCode will be negative on error
-//   if(httpCode2 > 0) {
-//      len = http2.getSize();
-
-//     Serial.println("Response size: "  + String(len));
-//     // HTTP header has been send and Server response header has been handled
-//     Serial.printf("[HTTP] GET... code: %d\n", httpCode2);
-//     response="";
-//     // file found at server
-//     if(httpCode2 == HTTP_CODE_OK) {
-
-//        stream = http2.getStreamPtr();
-
-//     }
-//     else {
-//       weather_get_error=true;
-//       display_update_enable(true);
-//       return false;  
-//     }
-//     //Serial.println(response);
-//     weather_get_error=false;
-//     #ifdef logging
-//     Serial.println("Weather data received");
-//     #endif
-//     //http2.end();
-
-//   } else {
-//     weather_get_error=true;
-//     Serial.printf("[HTTP] GET... failed, error: %s\n", http2.errorToString(httpCode2).c_str());
-
-//     // If is this the first fetch and it fails we show zeros
-//     if (temperature_show_low[0]>90)
-//     {
-//       temperature_show_low[0]=0;
-//       temperature_show_low[1]=0;
-//       temperature_show_high[0]=0;
-//       temperature_show_high[1]=0;
-
-//       icon_show_low[0]=1;
-//       icon_show_low[1]=1;
-//       icon_show_high[0]=1;
-//       icon_show_high[1]=1;
-//     }
-//     http2.end();
-//     display_update_enable(true);
-// //    display_ticker.attach(0.001, display_updater);
-
-//     dimm=1;
-//     return false;
-//   }
-//   Serial.println("Fetch weather successfull");
-//   // Ok ... we have some valid response data to work on
-
-//   // First day
-
-
-//   // Fill high/low with dummy data
-//   temperature_show_low[0]=+99;
-//   temperature_show_low[1]=+99;
-//   temperature_show_high[0]=-99;
-//   temperature_show_high[1]=-99;
-
-//   icon_show_low[0]=-99;
-//   icon_show_low[1]=-99;
-//   icon_show_high[0]=+99;
-//   icon_show_high[1]=+99;
-
-
-//   int loop_count=-1;
-//   int this_index = 0;
-//   int next_index =0;
-//   int day_index=0;
-//   response="";
-
-//   while (1)
-//   {
-
-//     // create buffer for read
-//    char buff[32] = { 0 };
-
-//    // Fill up response string with 255 bytes
-//    while (http2.connected() && (len > 0 || len == -1) && (response.length()<255)) {
-//         // get available data size
-//         size_t size = stream->available();
-
-//         if(size) {
-//           // read up to 128 byte
-//           int c = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-//           //Serial.println(buff);
-//           response+=String(buff);
-
-
-//           if(len > 0)
-//             len -= c;
-
-//             //Serial.println("Bytes to bytes: "+ String(len));
-//         }
-//       }
-
-//     // Find temperature tag entry point
-//     this_index = response.indexOf("dt\"");
-
-//     // If this entry point not at beginning of the buffer - truncate and fill again
-//     if (this_index>10)
-//     {
-//       response.remove(0,this_index);
-//       continue;
-//     }
-
-//     loop_count++;
-
-
-//     // Get time of data set
-//     this_index = response.indexOf(":",this_index);
-//     String time_stamp = response.substring(this_index+1,this_index+11);
-//     int time_stamp_int = time_stamp.toInt();
-//     int time_stamp_hour = hour(time_stamp_int);
-
-//     // Get temperature of data set
-//     this_index = response.indexOf("temp\"",this_index);
-//     this_index = response.indexOf(":",this_index);
-//     next_index = response.indexOf(",",this_index);
-
-//     String temperature = response.substring(this_index+1,next_index);
-//     int temperature_int = temperature.toInt()-273;
-
-//     // Get icon of data set
-//     this_index = response.indexOf("icon\"",this_index);
-//     this_index = response.indexOf(":",this_index);
-//     next_index = response.indexOf("\"",this_index+2);
-
-//     String icon = response.substring(this_index+2,next_index-1);
-//     Serial.println(String(day_index) + ", Time:" + time_stamp + ", Temp: " + String(temperature_int)+ ", Icon: " + icon);
-//     String night_day = response.substring(next_index-1,next_index);
-//     int icon_int = icon.toInt();
-
-//     //Serial.println(response.substring(0,next_index));
-//     // Remove processed data from response string
-//     response.remove(0,next_index);
-
-//     // Map fetched icon data to display icon
-//     switch (icon_int) {
-//       case 1:
-//       //do something when var equals 1
-//       icon_int=0;
-//       break;
-//       case 2:
-//       icon_int=1;
-//       //do something when var equals 2
-//       break;
-//       case 3:
-//       icon_int=2;
-//       //do something when var equals 2
-//       break;
-//       case 4:
-//       icon_int=3;
-//       //do something when var equals 2
-//       break;
-//       case 9:
-//       icon_int=5;
-//       //do something when var equals 2
-//       break;
-//       case 10:
-//       icon_int=4;
-//       //do something when var equals 2
-//       break;
-//       case 11:
-//       icon_int=6;
-//       //do something when var equals 2
-//       break;
-//       case 13:
-//       icon_int=7;
-//       //do something when var equals 2
-//       break;
-//       case 50:
-//       icon_int=8;
-//       //do something when var equals 2
-//       break;
-//       default:
-//       icon_int=8;
-//       break;
-//     }
-
-//     // If there is only one data-set before midnight on the current day we have to display something - just use that midnight data
-//     if ((time_stamp_hour==0) )
-//     {
-//       if (loop_count==0)
-//       {
-//         temperature_show_low[day_index]=temperature_int;
-//         temperature_show_high[day_index]=temperature_int;
-
-//         icon_show_low[day_index]=icon_int;
-//         icon_show_high[day_index]=icon_int;
-//       }
-//       day_index++;
-//       // Only need two days - we are done
-//        if (day_index==2)
-//          break;
-//     }
-
-//     // Only use data between 6am and 6pm since we most likely will be inside otherwise
-//     else if (((time_stamp_hour>=6)&&(time_stamp_hour<=18))||(temperature_show_low[day_index]>90)||(temperature_show_high[day_index]<-90))
-//     {
-//       #ifdef logging
-//       //Serial.println(String(day_index) + " Temp: " + String(temperature_int)+", Icon: " + String(icon_int)+" "+String(night_day));
-//       #endif
-
-//       // Find the max and min over the day
-//       if (temperature_int<temperature_show_low[day_index])
-//       temperature_show_low[day_index]=temperature_int;
-
-//       if (temperature_int>temperature_show_high[day_index])
-//       temperature_show_high[day_index]=temperature_int;
-
-//       if (icon_int>icon_show_low[day_index])
-//       icon_show_low[day_index]=icon_int;
-
-//       if (icon_int<icon_show_high[day_index])
-//       icon_show_high[day_index]=icon_int;
-
-//     }
-//     yield();
-//   }
+      this_index = response.indexOf("sunrise");
+      this_index = response.indexOf(":",this_index);
+      next_index = response.indexOf(",",this_index);
+      sunrise=response.substring(this_index+1,next_index).toInt();
 
 
 
-//   #ifdef logging
-//   Serial.println("Last character used: " + String(this_index));
-//   Serial.println("T-Low 0:" + String(temperature_show_low[0])+ ", T-High:" + String(temperature_show_high[0]));
-//   Serial.println("T-Low 1:" + String(temperature_show_low[1])+ ", T-High:" + String(temperature_show_high[1]));
-//   Serial.println("I-Low 0:" + String(icon_show_low[0])+ ", I-High:" + String(icon_show_high[0]));
-//   Serial.println("I-Low 1:" + String(icon_show_low[1])+ ", I-High:" + String(icon_show_high[1]));
-//   #endif
-// //  display_ticker.attach(0.001, display_updater);
-//   display_update_enable(true);
+      //Serial.println(response);
+      time_t time_now = now();
+      #ifdef LOGGING_ENABLED
+      Serial.println("Got Sunrise at " + String (sunrise) + " Now:" + String (time_now) + " Sunset at " + String(sunset) );
+      #endif
+    }
+  } else {
+    weather_get_error=true;
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
 
-//   dimm=1;
-//   return true;
-// }
+  }
+  http.end();
+
+
+  // ---  
+  // ---
+  // Fetch the actual data now
+  // ---
+  // ---
+
+
+  // Fetch forecast
+  HTTPClient http2;
+
+  http2.begin(forecast_api_url); //HTTP
+  int httpCode2 = http2.GET();
+  WiFiClient * stream;
+  int len;
+  // httpCode will be negative on error
+  if(httpCode2 > 0) {
+    len = http2.getSize();
+
+    #ifdef LOGGING_ENABLED
+    Serial.printf("[HTTP] GET... code: %d\n", httpCode2);
+    Serial.println("Response size: "  + String(len));
+    #endif
+    // HTTP header has been send and Server response header has been handled
+    response="";
+    // file found at server
+    if(httpCode2 == HTTP_CODE_OK) {
+
+       stream = http2.getStreamPtr();
+
+    }
+    else {
+      weather_get_error=true;
+      dimm = +1;
+      display_update_enable(true);
+      return false;  
+    }
+    //Serial.println(response);
+    weather_get_error=false;
+    #ifdef LOGGING_ENABLED
+    Serial.println("Weather data received");
+    #endif
+    //http2.end();
+
+  } else {
+    weather_get_error=true;
+    Serial.printf("[HTTP] GET... failed, error: %s\n", http2.errorToString(httpCode2).c_str());
+
+    // If is this the first fetch and it fails we show zeros
+    if (temperature_show_low[0]>90)
+    {
+      temperature_show_low[0]=0;
+      temperature_show_low[1]=0;
+      temperature_show_high[0]=0;
+      temperature_show_high[1]=0;
+
+      icon_show_low[0]=1;
+      icon_show_low[1]=1;
+      icon_show_high[0]=1;
+      icon_show_high[1]=1;
+    }
+    http2.end();
+    dimm = +1;
+    display_update_enable(true);
+//    display_ticker.attach(0.001, display_updater);
+
+    dimm=1;
+    return false;
+  }
+  Serial.println("Fetch weather successfull");
+  // Ok ... we have some valid response data to work on
+
+  // First day
+
+
+  // Fill high/low with dummy data
+  temperature_show_low[0]=+99;
+  temperature_show_low[1]=+99;
+  temperature_show_high[0]=-99;
+  temperature_show_high[1]=-99;
+
+  icon_show_low[0]=-99;
+  icon_show_low[1]=-99;
+  icon_show_high[0]=+99;
+  icon_show_high[1]=+99;
+
+
+  int loop_count=-1;
+  int this_index = 0;
+  int next_index =0;
+  int day_index=0;
+  response="";
+
+  while (1)
+  {
+
+    // create buffer for read
+    char buff[65] = { 0 };
+
+    // Fill up response string with 255 bytes
+    while (http2.connected() && (len > 0 || len == -1) && (response.length()<255)) {
+      // get available data size
+      size_t size = stream->available();
+
+      if(size) {
+        // read up to 128 byte
+        int c = stream->readBytes(buff, ((size >= sizeof(buff)) ? sizeof(buff) -1 : size));
+        buff[c] = 0;
+        //Serial.println(buff);
+        response+=String(buff);
+
+
+        if(len > 0)
+          len -= c;
+
+          //Serial.println("Bytes to bytes: "+ String(len));
+      }
+    }
+
+    // Find temperature tag entry point
+    this_index = response.indexOf("dt\"");
+
+    // If this entry point not at beginning of the buffer - truncate and fill again
+    if (this_index>10)
+    {
+      response.remove(0,this_index);
+      continue;
+    }
+
+    loop_count++;
+
+    #ifdef LOGGING_ENABLED
+    Serial.println("Debug: Buffer String: " + response);
+    #endif
+
+
+    // Get time of data set
+    this_index = response.indexOf(":",this_index);
+    String time_stamp = response.substring(this_index+1,this_index+11);
+    int time_stamp_int = time_stamp.toInt();
+    int time_stamp_hour = hour(time_stamp_int);
+
+    // Get temperature of data set
+    this_index = response.indexOf("temp\"",this_index);
+    this_index = response.indexOf(":",this_index);
+    next_index = response.indexOf(",",this_index);
+
+    String temperature = response.substring(this_index+1,next_index);
+    int temperature_int = temperature.toInt();
+
+    // Get icon of data set
+    this_index = response.indexOf("icon\"",this_index);
+    this_index = response.indexOf(":",this_index);
+    next_index = response.indexOf("\"",this_index+2);
+
+    String icon = response.substring(this_index+2,next_index-1);
+
+    #ifdef LOGGING_ENABLED
+      Serial.println("Temp string: " + temperature + ", Icon string: " + icon);
+    #endif
+
+    Serial.println(String(day_index) + ", Time:" + time_stamp + ", Temp: " + String(temperature_int)+ ", Icon: " + icon);
+    String night_day = response.substring(next_index-1,next_index);
+    int icon_int = icon.toInt();
+
+    //Serial.println(response.substring(0,next_index));
+    // Remove processed data from response string
+    response.remove(0,next_index);
+
+    // Map fetched icon data to display icon
+    switch (icon_int) {
+      case 1:
+      //do something when var equals 1
+      icon_int=0;
+      break;
+      case 2:
+      icon_int=1;
+      //do something when var equals 2
+      break;
+      case 3:
+      icon_int=2;
+      //do something when var equals 2
+      break;
+      case 4:
+      icon_int=3;
+      //do something when var equals 2
+      break;
+      case 9:
+      icon_int=5;
+      //do something when var equals 2
+      break;
+      case 10:
+      icon_int=4;
+      //do something when var equals 2
+      break;
+      case 11:
+      icon_int=6;
+      //do something when var equals 2
+      break;
+      case 13:
+      icon_int=7;
+      //do something when var equals 2
+      break;
+      case 50:
+      icon_int=8;
+      //do something when var equals 2
+      break;
+      default:
+      icon_int=8;
+      break;
+    }
+
+    // If there is only one data-set before midnight on the current day we have to display something - just use that midnight data
+    if ((time_stamp_hour==0) )
+    {
+      if (loop_count==0)
+      {
+        temperature_show_low[day_index]=temperature_int;
+        temperature_show_high[day_index]=temperature_int;
+
+        icon_show_low[day_index]=icon_int;
+        icon_show_high[day_index]=icon_int;
+      }
+      day_index++;
+      // Only need two days - we are done
+       if (day_index==2)
+         break;
+    }
+
+    // Only use data between 6am and 6pm since we most likely will be inside otherwise
+    else // if (((time_stamp_hour>=4)&&(time_stamp_hour<=4))||(temperature_show_low[day_index]>90)||(temperature_show_high[day_index]<-90))
+    {
+      #ifdef LOGGING_ENABLED
+      Serial.println(" Time:" + time_stamp + " : " + String(day_index) + " Temp: " + String(temperature_int)+", Icon: " + String(icon_int)+" "+String(night_day));
+      #endif
+
+      // Find the max and min over the day
+      if (temperature_int<temperature_show_low[day_index])
+      temperature_show_low[day_index]=temperature_int;
+
+      if (temperature_int>temperature_show_high[day_index])
+      temperature_show_high[day_index]=temperature_int;
+
+      if (icon_int>icon_show_low[day_index])
+      icon_show_low[day_index]=icon_int;
+
+      if (icon_int<icon_show_high[day_index])
+      icon_show_high[day_index]=icon_int;
+
+    }
+
+    yield();
+  }
+
+
+  #ifdef LOGGING_ENABLED
+  Serial.println("Last character used: " + String(this_index));
+  Serial.println("T-Low 0:" + String(temperature_show_low[0])+ ", T-High:" + String(temperature_show_high[0]));
+  Serial.println("T-Low 1:" + String(temperature_show_low[1])+ ", T-High:" + String(temperature_show_high[1]));
+  Serial.println("I-Low 0:" + String(icon_show_low[0])+ ", I-High:" + String(icon_show_high[0]));
+  Serial.println("I-Low 1:" + String(icon_show_low[1])+ ", I-High:" + String(icon_show_high[1]));
+  #endif
+//  display_ticker.attach(0.001, display_updater);
+  dimm=+1;
+  display_update_enable(true);
+  return true;
+}
+
+
+
+// This draws the time for the weather view
+void draw_time_weather ()
+{
+  uint8_t this_hour= hour();
+  uint8_t this_minute= minute();
+  uint8_t this_second= second();
+  display_buffer.setFont(&TomThumb);
+  display_buffer.setTextColor(myWHITE);
+  display_buffer.setCursor(25,6);
+  if (this_hour<10)
+  display_buffer.println("0"+String(this_hour));
+  else
+  display_buffer.println(this_hour);
+  display_buffer.setCursor(25,16);
+
+  if (this_minute<10)
+  display_buffer.println("0"+String(this_minute));
+  else
+  display_buffer.println(this_minute);
+
+  // Dots
+  display_buffer.drawPixel(27,8,myWHITE);
+  display_buffer.drawPixel(29,8,myWHITE);
+
+}
+
+
+// // This draws the weather icons and temperature
+void draw_weather_icon (uint8_t icon, uint8_t location, int temp,bool ab)
+{
+  display_buffer.setFont(&TomThumb);
+
+  if (location>2)
+  location=2;
+
+  if (icon>10)
+  icon=10;
+  for (int yy=0; yy<10;yy++)
+  {
+    for (int xx=0; xx<10;xx++)
+    {
+      uint16_t byte_pos=(xx+icon*10)*2+yy*220;
+      if (ab){
+        this_single_double.two[1]=weather_icons_a[byte_pos];
+        this_single_double.two[0]=weather_icons_a[byte_pos+1];
+      }
+      else
+      {
+        this_single_double.two[1]=weather_icons_b[byte_pos];
+        this_single_double.two[0]=weather_icons_b[byte_pos+1];
+      }
+      display_buffer.drawPixel(1+xx+location*12,yy,this_single_double.one);
+    }
+
+  }
+
+  int pixel_shift=0;
+  if ((temp>-10)&&(temp<10)) {
+    pixel_shift=2;
+  }
+
+  if (location==0) {
+    display_buffer.setCursor(2+pixel_shift,16);
+  } else {
+    display_buffer.setCursor(14+pixel_shift,16);
+  }
+
+  if (temp<0)
+  {
+    temp=temp*-1;
+    if (location==0) {
+      display_buffer.drawPixel(pixel_shift,13,myWHITE);
+      display_buffer.drawPixel(pixel_shift+1,13,myWHITE);
+    } else {
+      display_buffer.drawPixel(12+pixel_shift,13,myWHITE);
+      display_buffer.drawPixel(12+pixel_shift+1,13,myWHITE);
+    }
+  }
+  display_buffer.println(temp);
+}
 
 
 #endif

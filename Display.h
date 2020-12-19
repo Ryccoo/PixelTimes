@@ -15,8 +15,9 @@
 
 
 PxMATRIX display(32,16,P_LAT, P_OE,P_A,P_B,P_C);
-DrawingBuffer buffer_drawer;
+DrawingBuffer display_buffer;
 int dimm=0;
+int brightness=DEFAULT_BRIGHTNESS;
 
 Ticker display_ticker;
 hw_timer_t * timer = NULL;
@@ -40,21 +41,18 @@ void render_frame ()
   for (int yy=0;yy<16;yy++){
     for (int xx=0;xx<32;xx++){
 #if RGB==565
-      this_single_double.two[0]=buffer_drawer.frame_buffer[i];
-      this_single_double.two[1]=buffer_drawer.frame_buffer[i+1];
+      this_single_double.two[0]=display_buffer.frame_buffer[i];
+      this_single_double.two[1]=display_buffer.frame_buffer[i+1];
 
       display.drawPixelRGB565(xx,yy, this_single_double.one);
       i=i+2;
 #else
-      display.drawPixelRGB888(xx,yy,buffer_drawer.frame_buffer[i],buffer_drawer.frame_buffer[i+1],buffer_drawer.frame_buffer[i+2]);
+      display.drawPixelRGB888(xx,yy,display_buffer.frame_buffer[i],display_buffer.frame_buffer[i+1],display_buffer.frame_buffer[i+2]);
       i=i+3;
 #endif
     }
   }
 }
-
-#endif
-
 
 #ifdef ESP32
 void IRAM_ATTR display_updater(){
@@ -62,7 +60,7 @@ void IRAM_ATTR display_updater(){
   brightness=brightness+dimm;
   if (brightness<BRIGHTNESS_MIN)
   {
-   brightness=0;
+   brightness=0; 
    dimm=0;
   }
 
@@ -107,3 +105,7 @@ void display_update_enable(bool is_enable)
   }
 #endif
 }
+
+
+
+#endif

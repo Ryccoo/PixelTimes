@@ -2,7 +2,7 @@
 #define Config_H
 
 
-#define LOGGING_ENABLED 1
+#define LOGGING_ENABLED
 //#define SPIFFS_ENABLE 1
 
 
@@ -13,13 +13,11 @@ const char HOSTNAME[] = "PixelTimes";
 const char* ntp_server = "0.ca.pool.ntp.org";
 
 // -- WEATHER
-int show_weather=false;
+int show_weather=true;
 const char* weather_api_url = "http://api.openweathermap.org/data/2.5/weather?q=Kitchener,CA&APPID=2c615a3ac804e362d1de5cf62b74a949&units=metric";
 const char* forecast_api_url = "http://api.openweathermap.org/data/2.5/forecast?q=Kitchener,CA&APPID=2c615a3ac804e362d1de5cf62b74a949&units=metric";
 
-int brightness=50;
-
-
+#define DEFAULT_BRIGHTNESS 50
 
 
 // ------------------------------- //
