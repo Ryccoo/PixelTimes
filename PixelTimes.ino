@@ -28,138 +28,12 @@
 #include "PixelWifi.h"
 
 
-Ticker display_ticker;
-
-
-int dimm=0;
-uint8_t display_draw_time=60;
-
 bool shouldSaveWifiConfig = true;
 unsigned long button_press_time=0;
 
 File ff;
 File fsUploadFile;
 
-hw_timer_t * timer = NULL;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-
-
-
-boolean syncEventTriggered = false; // True if a time even has been triggered
-//NTPSyncEvent_t ntpEvent; // Last triggered event
-
-
-//uint8_t display_draw_time=1-;
-//#ifdef ESP8266
-//// ISR for display refresh
-//void display_updater()
-//{
-////  display.display(display_draw_time);
-//  // This implements dimming
-//  brightness=brightness+dimm;
-//  if (brightness<0)
-//  {
-//    brightness=0;
-//    dimm=0;
-//  }
-//
-//  if (brightness>2100)
-//  {
-//    brightness=2100;
-//    dimm=0;
-//  }
-//   ESP.wdtFeed();
-//  display.display(brightness/30);
-//}
-//#endif
-
-#ifdef ESP32
-void IRAM_ATTR display_updater(){
-//  // Increment the counter and set the time of ISR
-  brightness=brightness+dimm;
-  if (brightness<BRIGHTNESS_MIN)
-  {
-   brightness=0;
-   dimm=0;
-  }
-
-  if (brightness>BRIGHTNESS_MAX)
-  {
-   brightness=BRIGHTNESS_MAX;
-   dimm=0;
-  }
-  display.setBrightness(brightness);
-
-  portENTER_CRITICAL_ISR(&timerMux);
-  display.display(display_draw_time);
-  portEXIT_CRITICAL_ISR(&timerMux);
-}
-#endif
-
-
-void display_update_enable(bool is_enable)
-{
-
-#ifdef ESP8266
-  if (is_enable)
-    display_ticker.attach(0.004, display_updater);
-  else
-    display_ticker.detach();
-#endif
-
-#ifdef ESP32
-  Serial.println("Display update enable fun");
-  if (is_enable)
-  {
-    timer = timerBegin(0, 80, true);
-    timerAttachInterrupt(timer, &display_updater, true);
-    timerAlarmWrite(timer, 4000, true);
-    timerAlarmEnable(timer);
-  }
-  else
-  {
-    timerDetachInterrupt(timer);
-    timerAlarmDisable(timer);
-  }
-#endif
-}
-// ISR for display refresh
-//void display_updater()
-//{
-//  // This implements dimming
-//  brightness=brightness+dimm;
-//  if (brightness<0)
-//  {
-//    brightness=0;
-//    dimm=0;
-//  }
-//
-//  if (brightness>2100)
-//  {
-//    brightness=2100;
-//    dimm=0;
-//  }
-//   ESP.wdtFeed();
-//  display.display(brightness/30);
-//}
-
-// This gets all the weather data from openweathermap
-
-
-// Handle NTP events
-//void processSyncEvent(NTPSyncEvent_t ntpEvent) {
-//  if (ntpEvent) {
-//    Serial.print("Time Sync error: ");
-//    if (ntpEvent == noResponse)
-//    Serial.println("NTP server not reachable");
-//    else if (ntpEvent == invalidAddress)
-//    Serial.println("Invalid NTP server address");
-//  }
-//  else {
-//    Serial.print("Got NTP time: ");
-//    Serial.println(NTP.getTimeDateString(NTP.getLastNTPSync()));
-//  }
-//}
 
 // void button_pressed()
 // {
@@ -168,8 +42,8 @@ void display_update_enable(bool is_enable)
 //   show_weather=!show_weather;
 //   button_press_time=millis();
 //   Serial.println("Button");
-
 // }
+
 String filenames[100];
 int no_files=0;
 
@@ -202,7 +76,7 @@ void NTPSetup() {
 void setup() {
   Serial.begin(115200);
   // yield();
-  delay(5000);
+  // delay(5000);
   Serial.println("Setup");
 ////  wifi_station_set_hostname(const_cast<char*>(HOSTNAME));
 //  WiFiManager wifiManager;
@@ -275,7 +149,7 @@ void setup() {
   display_update_enable(true);
 //  attachInterrupt(digitalPinToInterrupt(0),button_pressed,FALLING);
 //  dimm=1;
-  yield();
+  // yield();
   delay(3000);
   Serial.println("End of setup");
 }
@@ -469,6 +343,7 @@ void loop() {
       Serial.println(test_ab ? "true" : "false");
     }
 
+    buffer_drawer.clearScreen();
     draw_weather_icon(test_i, 0, -12, test_ab);
     draw_weather_icon(test_i, 1, -23, test_ab);
     draw_time_weather();
@@ -579,13 +454,14 @@ void loop() {
     {
 
       if ((millis()-last_animation_change)>10000)
-      break;
+        break;
+
       int frame=0;
 
       while (1)
       {
         if (show_weather)
-        return;
+          return;
 
         // Copy current frame to frame buffer
         unsigned long draw_start_time = millis();

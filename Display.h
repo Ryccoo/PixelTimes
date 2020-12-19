@@ -16,7 +16,12 @@
 
 PxMATRIX display(32,16,P_LAT, P_OE,P_A,P_B,P_C);
 DrawingBuffer buffer_drawer;
+int dimm=0;
 
+Ticker display_ticker;
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+uint8_t display_draw_time=60;
 
 // Some standard colors
 uint16_t myRED = display.color565(255, 0, 0);
@@ -49,3 +54,56 @@ void render_frame ()
 }
 
 #endif
+
+
+#ifdef ESP32
+void IRAM_ATTR display_updater(){
+//  // Increment the counter and set the time of ISR
+  brightness=brightness+dimm;
+  if (brightness<BRIGHTNESS_MIN)
+  {
+   brightness=0;
+   dimm=0;
+  }
+
+  if (brightness>BRIGHTNESS_MAX)
+  {
+   brightness=BRIGHTNESS_MAX;
+   dimm=0;
+  }
+  display.setBrightness(brightness);
+
+  portENTER_CRITICAL_ISR(&timerMux);
+  display.display(display_draw_time);
+  portEXIT_CRITICAL_ISR(&timerMux);
+}
+#endif
+
+
+
+void display_update_enable(bool is_enable)
+{
+
+#ifdef ESP8266
+  if (is_enable)
+    display_ticker.attach(0.004, display_updater);
+  else
+    display_ticker.detach();
+#endif
+
+#ifdef ESP32
+  Serial.println("Display update enable fun");
+  if (is_enable)
+  {
+    timer = timerBegin(0, 80, true);
+    timerAttachInterrupt(timer, &display_updater, true);
+    timerAlarmWrite(timer, 4000, true);
+    timerAlarmEnable(timer);
+  }
+  else
+  {
+    timerDetachInterrupt(timer);
+    timerAlarmDisable(timer);
+  }
+#endif
+}

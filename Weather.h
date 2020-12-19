@@ -1,6 +1,8 @@
 #ifndef Weather_H
 #define Weather_H
 
+#include "Configuration.h"
+
 
 // Array that keeps low/high temperatures and icons for two days
 int    temperature_show_low[2];
