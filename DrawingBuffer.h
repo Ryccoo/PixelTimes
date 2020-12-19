@@ -17,9 +17,14 @@ public:
   uint8_t frame_buffer[frame_size]={0};
   DrawingBuffer() : Adafruit_GFX(40,16) {}
   uint8_t bg_color[3];
+  bool invert_color = false;
 
   void render() {
-  	
+
+  }
+
+  void setInvertTextColor(bool invert) {
+  	invert_color = invert;
   }
 
   void clearScreen() {
@@ -33,6 +38,13 @@ public:
       return;
 
 #if RGB==565
+  	if(!invert_color) {
+  		this_single_double.one = color;
+		frame_buffer[x*2+y*64]=this_single_double.two[0];
+	    frame_buffer[x*2+y*64+1]=this_single_double.two[1];	
+	    return;
+  	}	
+
     this_single_double.two[0]=frame_buffer[40];
     this_single_double.two[1]=frame_buffer[41];
     uint8_t r = ((((this_single_double.one >> 11) & 0x1F) * 527) + 23) >> 6;
@@ -66,6 +78,8 @@ public:
     }
 #endif
   }
+
+
 };
 
 

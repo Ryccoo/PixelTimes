@@ -12,7 +12,9 @@
 #define P_E 15
 #define P_OE 2
 
-PxMATRIX display(32,16, P_LAT, P_OE,P_A,P_B,P_C);
+
+
+PxMATRIX display(32,16,P_LAT, P_OE,P_A,P_B,P_C);
 DrawingBuffer buffer_drawer;
 
 

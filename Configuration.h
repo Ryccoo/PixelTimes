@@ -10,10 +10,12 @@
 const char HOSTNAME[] = "PixelTimes";
 
 // -- TIME CONFIG
-const String ntp = "0.ca.pool.ntp.org";
+const char* ntp_server = "0.ca.pool.ntp.org";
 
 // -- WEATHER
-int show_weather=false;
+int show_weather=true;
+
+int brightness=50;
 
 
 
